@@ -1,0 +1,25 @@
+{
+    "manifest_version": 3,
+    "name": "Anime Sidebar",
+    "version": "1.0",
+    "permissions": [
+        "storage",
+        "webNavigation",
+        "alarms"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": ["https://animension.to/*"],
+            "js": ["sidebar.js"],
+            "css": ["styles.css"]
+        }
+    ],
+    "icons": {
+        "16": "icons/icon.png",
+        "48": "icons/icon.png",
+        "128": "icons/icon.png"
+    }
+}

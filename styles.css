@@ -1,0 +1,56 @@
+body {
+    font-family: Arial, sans-serif;
+}
+
+.section h3 {
+    color: #333;
+}
+
+ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+/* li {
+    margin: 5px 0;
+    padding: 5px;
+    background-color: #1f7ac5;
+    border: 1px solid #ddd;
+} */
+.add-icon {
+    font-size: 18px; /* Example size */
+    vertical-align: middle; /* Aligns icon with adjacent text */
+    color: #555; /* Example color */
+}
+
+#newAnime, #addAnime {
+    margin-top: 10px;
+}
+
+#animeList{
+    background-color: #212c32;
+    padding-bottom: 11px !important;
+    padding-top: 11px !important;
+    border-radius: 5px;
+    
+}
+
+.remove-btn {
+    background-color: #f44336;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 5px 10px;
+    margin-left: 10px;
+    cursor: pointer;
+    position: absolute;
+    bottom: 15%;
+    right: 5%;
+}
+li[draggable] {
+    cursor: move;
+}
+
+.drag-over {
+    border: 1px dashed #000;
+}
