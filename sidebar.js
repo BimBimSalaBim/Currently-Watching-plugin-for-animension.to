@@ -1,24 +1,42 @@
-
-
-// Your existing code handles UI updates and interacts with the stored anime list
+// Description: This script is injected into the sidebar of the website to add functionality to the anime list section.
 if (document.readyState === "complete" || document.readyState === "interactive") {
     mainInitializationFunction();
+    if(chrome.storage.local.get('animeList')){
+        update();
+    }
 } else {
     document.addEventListener('DOMContentLoaded', mainInitializationFunction);
 }
-//when document is changed or updated inject icons
-document.addEventListener('DOMNodeInserted', function(event) {
-    injectAddIcons();
-});
+
+function setupMutationObserver() {
+    // Create a new observer instance
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.addedNodes.length) {
+                injectAddIcons();  // Assume this needs to be called when new nodes are added
+            }
+        });
+    });
+
+    // Configuration of the observer:
+    const config = { childList: true, subtree: true };
+
+    // Select the target node
+    const target = document.body;
+
+    // Pass in the target node, as well as the observer options
+    observer.observe(target, config);
+}
 
 function mainInitializationFunction() {
-    console.log('Document is ready.');
+    //console.log('Document is ready.');
     loadFontAwesome();
     injectAnimeListSection();
     setTimeout(() => {
         injectAddIcons();
     }, 300);
     loadAnimeList();
+    setupMutationObserver(); // Setup observer after initial functions
 }
 function loadFontAwesome() {
     const link = document.createElement('link');
@@ -64,9 +82,112 @@ function injectAddIcons() {
     });
 }
 
+function update(){
+    chrome.storage.local.get(['animeList'], function(result) {
+        let animeList = result.animeList || [];
+        // //console.log(animeList);
+        for(let i = 0; i < animeList.length; i++){
+            fetchAndStoreEpisodes(getAnimeIdFromUrl(animeList[i].animeId) );
+            checkForNewEpisodes(getAnimeIdFromUrl(animeList[i].animeId) );
+        }
+    });
+}
+function fetchAndStoreEpisodes(animeId) {
+    const url = `https://animension.to/public-api/episodes_2.php?id=${animeId}`;
+    fetch(url)
+        .then(response => response.json())
+        .then(episodes => {
+            chrome.storage.local.set({[`episodes_${animeId}`]: episodes}, () => {
+                // //console.log('Episodes for ' + animeId + ' stored successfully', episodes);
+            });
+        })
+        .catch(error => console.error('Failed to fetch episodes for anime ID ' + animeId + ':', error));
+}
+
+function findLastWatchedEpisode(history, animeId) {
+    let maxEpisode = 0;
+    history.forEach(item => {
+        // //console.log(Object.values(item.animeId).join('')," Line 82")
+        let currentAnimeId = Object.values(item.animeId).join('');
+        // //console.log(currentAnimeId," Line 84 : " , item.episodeNumber)
+        let episodeNumber = parseInt(item.episodeNumber);
+        // //console.log("currentAnimeId",currentAnimeId,"AnimeId",animeId.toString());
+        // //console.log("episodeNumber: ", episodeNumber, "maxEpisode: ", maxEpisode, "episodeNumber > maxEpisode: ", episodeNumber > maxEpisode  );
+        if (currentAnimeId === animeId.toString() && episodeNumber > maxEpisode) {
+            maxEpisode = episodeNumber;
+        }
+    });
+    return maxEpisode;
+}
+// Check for new episodes based on stored episodes and watch history
+function checkForNewEpisodes(animeId) {
+    fetchAndStoreHistory(); // Ensure the history is up-to-date
+    chrome.storage.local.get(['animeList'], function(result) {
+        const animeList = result.animeList || [];
+
+        // Get episodes and history
+        chrome.storage.local.get([`episodes_${animeId}`, 'watchHistory'], function(data) {
+            const episodes = data[`episodes_${animeId}`];
+            if (!episodes) {
+                console.error('No episodes data found for Anime ID:', animeId);
+                return; // Exit if no episodes data
+            }
+
+            const history = data.watchHistory || [];
+            const lastWatchedEpisode = findLastWatchedEpisode(history, animeId);
+
+            //console.log(`Processing Anime ID ${animeId}: Last watched episode ${lastWatchedEpisode}`);
+            
+            const newEpisodes = episodes.filter(ep => ep[2] > lastWatchedEpisode);
+            //console.log(`New episodes for Anime ID ${animeId}:`, newEpisodes);
+
+            // Find the anime in the animeList and update its newEpisodes count
+            const index = animeList.findIndex(anime => anime.animeId === animeId);
+            if (index !== -1) {
+                animeList[index].lastWatchedEpisode = lastWatchedEpisode;
+                if (animeList[index].newEpisodes !== newEpisodes.length) {
+                    animeList[index].newEpisodes = newEpisodes.length; // Only update if different
+                    chrome.storage.local.set({animeList: animeList}, () => {
+                        //console.log(`Updated anime list with new episodes count for ${animeId}`);
+                    });
+                } else {
+                    //console.log(`No update needed for ${animeId} (no new episodes)`);
+                }
+            } else {
+                //console.log('Anime ID not found in the animeList:', animeId);
+            }
+        });
+    });
+}
+// Fetches watch history and stores it
+function fetchAndStoreHistory() {
+    const url = 'https://animension.to/public-api/history_last_30.php';
+    fetch(url)
+        .then(response => response.json())
+        .then(history => {
+            const normalizedHistory = normalizeHistory(history);
+            chrome.storage.local.set({watchHistory: normalizedHistory}, () => {
+                //console.log('Watch history stored successfully');
+            });
+        })
+        .catch(error => console.error('Failed to fetch watch history:', error));
+}
+
+// Normalize history data to ensure consistency
+function normalizeHistory(historyItems) {
+    return historyItems.map(item => {
+        if (Array.isArray(item)) {
+            // //console.log("line 31 : ", (item))
+            // //console.log("line 32 : ", String(item['3']))
+            return {animeTitle: item[0], animeId:  String(item[1]), episodeNumber:  String(item[3])};
+        } else {
+            return {animeTitle: item['0'], animeId:  String(item['1']), episodeNumber:  String(item['3']), altName: item['4']};
+        }
+    });
+}
 function getAnimeIdFromUrl(url) {
     const urlParts = url.split('/');
-    console.log(urlParts[urlParts.length - 1]);
+    //console.log(urlParts[urlParts.length - 1]);
     return urlParts[urlParts.length - 1];
 }
 function addAnime(animeTitle, animeImg, animeLink, lastWatched = 0, newestEpisode = 0) {
@@ -84,11 +205,11 @@ function addAnime(animeTitle, animeImg, animeLink, lastWatched = 0, newestEpisod
         if (!animeList.some(anime => anime.title === animeTitle)) {
             animeList.push(animeData);
             chrome.storage.local.set({animeList: animeList}, function() {
-                console.log(animeTitle + ' added to your list');
+                //console.log(animeTitle + ' added to your list');
                 loadAnimeList(); // Reload the list to reflect changes
             });
         } else {
-            console.log(animeTitle + ' is already in your list');
+            //console.log(animeTitle + ' is already in your list');
         }
     });
 }
@@ -122,8 +243,12 @@ function injectAnimeListSection() {
 
 function loadAnimeList() {
     chrome.storage.local.get('animeList', function(result) {
-        console.log('Anime list:', result.animeList);
+        //console.log('Anime list:', result.animeList);
         const animeList = result.animeList || [];
+        
+        // Sort the list so that animes with new episodes appear first
+        animeList.sort((a, b) => b.newEpisodes - a.newEpisodes);
+
         const listElement = document.getElementById('animeList');
         if (listElement) {
             listElement.innerHTML = ''; // Clear existing list items
@@ -185,6 +310,7 @@ function loadAnimeList() {
 }
 
 
+
 let draggedItem = null;
 
 function handleDragStart(e) {
@@ -223,7 +349,7 @@ function updateStorageOrder(fromIndex, toIndex) {
         const movedItem = animeList.splice(fromIndex, 1)[0]; // Remove and get the item
         animeList.splice(toIndex, 0, movedItem); // Insert item at new position
         chrome.storage.local.set({animeList: animeList}, () => {
-            console.log('Anime list reordered.');
+            //console.log('Anime list reordered.');
             loadAnimeList(); // Optionally reload the list
         });
     });
@@ -242,16 +368,3 @@ function removeAnime(index) {
 }
 
 
-// Add this within your mainInitializationFunction or top-level code
-chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
-    if (message.type === 'newEpisodes') {
-        console.log('Received new episodes for anime ID:', message.animeId, message.episodes);
-        // Update the sidebar UI here
-        updateSidebarWithNewEpisodes(message.animeId, message.episodes);
-    }
-});
-
-function updateSidebarWithNewEpisodes(animeId, episodes) {
-    // Implement functionality to update the sidebar with new episode information
-    console.log('Update the sidebar for Anime ID ' + animeId + ' with:', episodes);
-}
